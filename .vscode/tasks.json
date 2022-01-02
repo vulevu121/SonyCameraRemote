@@ -1,18 +1,15 @@
 {
-    // See https://go.microsoft.com/fwlink/?LinkId=733558
-    // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build Release",
+            "label": "Build Debug",
             "type": "shell",
-            "command": "rm -f *;rm -f -r *;cmake -DCMAKE_BUILD_TYPE=Release ..;cmake --build .",
-            "options": {"cwd": "build"},
+            "command": "rm -f *;rm -f -r *;cmake -DCMAKE_BUILD_TYPE=Debug ..;cmake --build .",
+            "options": {
+                "cwd": "build"
+            },
             "problemMatcher": [],
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            }
+            "group": "build"
         }
     ]
 }

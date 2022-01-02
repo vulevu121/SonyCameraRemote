@@ -45,9 +45,16 @@ public:
     CameraDevice(std::int32_t no, CRLibInterface const* cr_lib, SCRSDK::ICrCameraObjectInfo const* camera_info);
     ~CameraDevice();
 
+    // Added functions
     void (*releaseExitSuccess)();
-    void half_ael_full_release() const;
+    void set_focusmode_manual();
+    void set_focusmode_afs();
     void set_release_on_completedownload(bool enable) {release_on_completedownload = enable;};
+    void set_verbose(bool enable) {verbose = enable;};
+    bool set_save_path(const text path, const text prefix, int startNo) const;
+    void half_press_down();
+    void half_press_up();
+    void half_full_release();
 
     // Try to connect to the device
     bool connect(SCRSDK::CrSdkControlMode openMode);
@@ -89,7 +96,6 @@ public:
     void set_aperture();
     void set_iso();
     bool set_save_info() const;
-    bool set_save_path(const text path, const text prefix, int startNo) const;
     void set_shutter_speed();
     void set_position_key_setting();
     void set_exposure_program_mode();
@@ -166,6 +172,7 @@ private:
     MtpContentsList m_contentList;
     bool m_spontaneous_disconnection;
     bool release_on_completedownload = false;
+    bool verbose = true;
 };
 } // namespace cli
 

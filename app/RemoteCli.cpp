@@ -591,7 +591,7 @@ void RemoteSampleApp()
 
 int main(int argc, char* argv[])
 {
-    mode ret = CommandLine(argc, argv);
+    mode ret = ArgParser(argc, argv);
 
     if (ret == mode::sdk) {
         RemoteSampleApp();

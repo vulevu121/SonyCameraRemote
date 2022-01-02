@@ -54,7 +54,7 @@ void capture(string outpath)
         cli::tout << "Error: Failed to initialize Remote SDK\n";
         releaseExitFailure();
     }
-    cli::tout << "Remote SDK successfully initialized.\n";
+    // cli::tout << "Remote SDK successfully initialized.\n";
 
     SDK::ICrEnumCameraObjectInfo* camera_list = nullptr;
 
@@ -65,7 +65,7 @@ void capture(string outpath)
     }
     auto ncams = camera_list->GetCount();
 
-    cli::tout << "Camera enumeration successful. " << ncams << " detected\n";
+    // cli::tout << "Camera enumeration successful. " << ncams << " detected\n";
 
     typedef std::shared_ptr<cli::CameraDevice> CameraDevicePtr;
     std::int32_t cameraNumUniq = 1;
@@ -79,6 +79,7 @@ void capture(string outpath)
     CameraDevicePtr camera = CameraDevicePtr(new cli::CameraDevice(cameraNumUniq, nullptr, camera_info));
     camera->releaseExitSuccess = releaseExitSuccess;
     camera->set_release_on_completedownload(true);
+    camera->set_verbose(false);
 
     // cli::tout << "Release enumerated camera list.\n";
     camera_list->Release();
@@ -90,11 +91,13 @@ void capture(string outpath)
 
     std::this_thread::sleep_for(1000ms);
 
-    camera->set_save_path(outpath, "", -1);
+    if (outpath.length() > 0) {
+        camera->set_save_path(outpath, "", -1);
+    }
 
     if (SDK::CrSdkControlMode_Remote == camera->get_sdkmode()) {
-        cli::tout << "Capturing\n";
-        camera->half_ael_full_release();
+        // cli::tout << "Capturing\n";
+        camera->half_full_release();
     }
     else {
         cli::tout << "Error: Unable to start remote control\n";
@@ -107,7 +110,7 @@ void capture(string outpath)
     releaseExitFailure();
 }
 
-mode CommandLine(int argc, char* argv[])
+mode ArgParser(int argc, char* argv[])
 {
     mode selected = mode::help;
     string outpath = "";
@@ -116,7 +119,7 @@ mode CommandLine(int argc, char* argv[])
         (command("--capture").set(selected, mode::capture).doc("Capture image") & (option("--dir").doc("Output dir") & value("output dir", outpath))) |
         command("--get").set(selected, mode::get).doc("Gets the value of a camera property") |
         command("--set").set(selected, mode::set).doc("Sets the value of camera property") |
-        command("--remote-app").set(selected, mode::sdk).doc("Load the sample app from Camera SDK") |
+        command("--sdk").set(selected, mode::sdk).doc("Load the sample app from Sony Camera SDK") |
         command("--help").set(selected, mode::help).doc("This printed message")
     );
 

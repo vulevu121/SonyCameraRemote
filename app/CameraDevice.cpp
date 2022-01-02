@@ -86,11 +86,11 @@ bool CameraDevice::connect(SCRSDK::CrSdkControlMode openMode)
 bool CameraDevice::disconnect()
 {
     m_spontaneous_disconnection = true;
-    tout << "Disconnect from camera...\n";
+    if (verbose) tout << "Disconnect from camera...\n";
     // auto disconnect_status = m_cr_lib->Disconnect(m_device_handle);
     auto disconnect_status = SDK::Disconnect(m_device_handle);
     if (CR_FAILED(disconnect_status)) {
-        tout << "Disconnect failed to initialize.\n";
+        if (verbose) tout << "Disconnect failed to initialize.\n";
         return false;
     }
     return true;
@@ -113,10 +113,10 @@ SCRSDK::CrSdkControlMode CameraDevice::get_sdkmode()
 {
     load_properties();
     if (SDK::CrSdkControlMode_ContentsTransfer == m_modeSDK) {
-        tout << TEXT("Contets Transfer Mode\n");
+        if (verbose) tout << TEXT("Contets Transfer Mode\n");
     }
     else {
-        tout << TEXT("Remote Control Mode\n");
+        if (verbose) tout << TEXT("Remote Control Mode\n");
     }
     return m_modeSDK;
 }
@@ -195,47 +195,68 @@ void CameraDevice::af_shutter() const
     SDK::SetDeviceProperty(m_device_handle, &prop);
 }
 
-void CameraDevice::half_ael_full_release() const
+void CameraDevice::set_focusmode_manual() 
+{
+    SDK::CrDeviceProperty focusmode_prop;
+    focusmode_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
+    focusmode_prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_MF);
+    SDK::SetDeviceProperty(m_device_handle, &focusmode_prop);
+}
+
+void CameraDevice::set_focusmode_afs() 
+{
+    SDK::CrDeviceProperty focusmode_prop;
+    focusmode_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
+    focusmode_prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_AF_S);
+    SDK::SetDeviceProperty(m_device_handle, &focusmode_prop);
+}
+
+void CameraDevice::half_press_down() 
 {
     SDK::CrDeviceProperty s1_prop;
-    SDK::CrDeviceProperty ael_prop;
-
-    ael_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_AEL);
-    ael_prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
-    ael_prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
-    SDK::SetDeviceProperty(m_device_handle, &ael_prop);
-
-    std::this_thread::sleep_for(500ms);
-    // tout << "Shutter Halfpress down\n";
     s1_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
     s1_prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
     s1_prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
     SDK::SetDeviceProperty(m_device_handle, &s1_prop);
+}
 
-    // Wait, then send shutter down
-    std::this_thread::sleep_for(1200ms);
-    // tout << "Shutter down\n";
-    SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
-
-    // Wait, then send shutter up
-    std::this_thread::sleep_for(1200ms);
-    // tout << "Shutter up\n";
-    SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
-
-    // Wait, then send shutter up
-    std::this_thread::sleep_for(1200ms);
-    // tout << "Shutter Halfpress up\n";
-
+void CameraDevice::half_press_up() 
+{
+    SDK::CrDeviceProperty s1_prop;
     s1_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
     s1_prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
+    s1_prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
     SDK::SetDeviceProperty(m_device_handle, &s1_prop);
+}
 
+void CameraDevice::half_full_release()
+{
+    // reset focus mode to Auto single
+    set_focusmode_afs();
+    std::this_thread::sleep_for(500ms);
+
+    // tout << "Shutter Halfpress down\n";
+    half_press_down();
+    std::this_thread::sleep_for(500ms);
+
+    // set to Manual focus mode to ensure shutter release
+    set_focusmode_manual();
     std::this_thread::sleep_for(1200ms);
 
-    ael_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_AEL);
-    ael_prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
-    SDK::SetDeviceProperty(m_device_handle, &ael_prop);
+    // tout << "Shutter down\n";
+    SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
+    std::this_thread::sleep_for(1200ms);
 
+    // tout << "Shutter up\n";
+    SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
+    std::this_thread::sleep_for(1200ms);
+
+    // tout << "Shutter Halfpress up\n";
+    half_press_up();
+    std::this_thread::sleep_for(500ms);
+
+    // set focus mode back to AF-S
+    set_focusmode_afs();
 }
 
 void CameraDevice::continuous_shooting() const
@@ -617,13 +638,18 @@ bool CameraDevice::set_save_info() const
 #else
     text path = fs::current_path().native();
     
-    tout << "Save path: " << path.data() << '\n';
+    if (verbose) tout << "Save dir: " << path.data() << '\n';
 
-    auto save_status = SDK::SetSaveInfo(m_device_handle
-        , const_cast<text_char*>(path.data()), TEXT(""), ImageSaveAutoStartNo);
+    text prefix = "";
+
+    auto save_status = SDK::SetSaveInfo(
+        m_device_handle, 
+        const_cast<text_char*>(path.data()), 
+        const_cast<text_char*>(prefix.data()), 
+        ImageSaveAutoStartNo);
 #endif
     if (CR_FAILED(save_status)) {
-        tout << "Failed to set save path.\n";
+        if (verbose) tout << "Failed to set save path.\n";
         return false;
     }
     return true;
@@ -631,13 +657,13 @@ bool CameraDevice::set_save_info() const
 
 bool CameraDevice::set_save_path(const text path, const text prefix, int startNo) const
 {
-    tout << "Save path: " << path.data() << '\n';
+    if (verbose) tout << "Save dir: " << path.data() << '\n';
 
     auto save_status = SDK::SetSaveInfo(m_device_handle
         , const_cast<text_char*>(path.data()), const_cast<text_char*>(prefix.data()), startNo);
 
     if (CR_FAILED(save_status)) {
-        tout << "Failed to set save path.\n";
+        if (verbose) tout << "Failed to set save path.\n";
         return false;
     }
     return true;
@@ -1816,17 +1842,17 @@ void CameraDevice::OnConnected(SDK::DeviceConnectionVersioin version)
 {
     m_connected.store(true);
     text id(this->get_id());
-    tout << "Connected to " << m_info->GetModel() << " (" << id.data() << ")\n";
+    if (verbose) tout << "Connected to " << m_info->GetModel() << " (" << id.data() << ")\n";
 }
 
 void CameraDevice::OnDisconnected(CrInt32u error)
 {
     m_connected.store(false);
     text id(this->get_id());
-    tout << "Disconnected from " << m_info->GetModel() << " (" << id.data() << ")\n";
+    if (verbose) tout << "Disconnected from " << m_info->GetModel() << " (" << id.data() << ")\n";
     if ((false == m_spontaneous_disconnection) && (SDK::CrSdkControlMode_ContentsTransfer == m_modeSDK))
     {
-        tout << "Please input '0' to return to the TOP-MENU\n";
+        if (verbose) tout << "Please input '0' to return to the TOP-MENU\n";
     }
 }
 

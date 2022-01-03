@@ -9,7 +9,11 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/RemoteCli",
-            "args": [],
+            "args": [
+                "--capture",
+                "--dir",
+                "/home/pixyl/Pictures"
+            ],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],

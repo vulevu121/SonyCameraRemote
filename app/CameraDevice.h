@@ -47,6 +47,9 @@ public:
 
     // Added functions
     void (*releaseExitSuccess)();
+    bool wait_for_prop_value(SCRSDK::CrDevicePropertyCode prop, CrInt16u value);
+    void set_pcremote_priority();
+    void set_manual_exposure();
     void set_focusmode_manual();
     void set_focusmode_afs();
     void set_release_on_completedownload(bool enable) {release_on_completedownload = enable;};

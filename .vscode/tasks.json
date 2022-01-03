@@ -9,7 +9,10 @@
                 "cwd": "build"
             },
             "problemMatcher": [],
-            "group": "build"
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
         }
     ]
 }

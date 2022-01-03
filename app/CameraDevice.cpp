@@ -76,7 +76,7 @@ bool CameraDevice::connect(SCRSDK::CrSdkControlMode openMode)
     auto connect_status = SDK::Connect(m_info, this, &m_device_handle, openMode);
     if (CR_FAILED(connect_status)) {
         text id(this->get_id());
-        tout << std::endl << "Failed to connect : 0x" << std::hex << connect_status << std::dec << ". " << m_info->GetModel() << " (" << id.data() << ")\n";
+        if (verbose) tout << std::endl << "Failed to connect : 0x" << std::hex << connect_status << std::dec << ". " << m_info->GetModel() << " (" << id.data() << ")\n";
         return false;
     }
     set_save_info();
@@ -98,12 +98,12 @@ bool CameraDevice::disconnect()
 
 bool CameraDevice::release()
 {
-    tout << "Release camera...\n";
+    if (verbose) tout << "Release camera...\n";
     // auto finalize_status = m_cr_lib->FinalizeDevice(m_device_handle);
     auto finalize_status = SDK::ReleaseDevice(m_device_handle);
     m_device_handle = 0; // clear
     if (CR_FAILED(finalize_status)) {
-        tout << "Finalize device failed to initialize.\n";
+        if (verbose) tout << "Finalize device failed to initialize.\n";
         return false;
     }
     return true;
@@ -123,14 +123,14 @@ SCRSDK::CrSdkControlMode CameraDevice::get_sdkmode()
 
 void CameraDevice::capture_image() const
 {
-    tout << "Capture image...\n";
-    tout << "Shutter down\n";
+    if (verbose) tout << "Capture image...\n";
+    if (verbose) tout << "Shutter down\n";
     // m_cr_lib->SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam_Down);
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam_Down);
 
     // Wait, then send shutter up
     std::this_thread::sleep_for(35ms);
-    tout << "Shutter up\n";
+    if (verbose) tout << "Shutter up\n";
     // m_cr_lib->SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam_Up);
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam_Up);
 }
@@ -138,15 +138,15 @@ void CameraDevice::capture_image() const
 void CameraDevice::s1_shooting() const
 {
     text input;
-    tout << "Is the focus mode set to AF? (y/n): ";
+    if (verbose) tout << "Is the focus mode set to AF? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Set the focus mode to AF\n";
+        if (verbose) tout << "Set the focus mode to AF\n";
         return;
     }
 
-    tout << "S1 shooting...\n";
-    tout << "Shutter Halfpress down\n";
+    if (verbose) tout << "S1 shooting...\n";
+    if (verbose) tout << "Shutter Halfpress down\n";
     SDK::CrDeviceProperty prop;
     prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
     prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
@@ -155,7 +155,7 @@ void CameraDevice::s1_shooting() const
 
     // Wait, then send shutter up
     std::this_thread::sleep_for(1s);
-    tout << "Shutter Halfpress up\n";
+    if (verbose) tout << "Shutter Halfpress up\n";
     prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
     SDK::SetDeviceProperty(m_device_handle, &prop);
 }
@@ -163,15 +163,15 @@ void CameraDevice::s1_shooting() const
 void CameraDevice::af_shutter() const
 {
     text input;
-    tout << "Is the focus mode set to AF? (y/n): ";
+    if (verbose) tout << "Is the focus mode set to AF? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Set the focus mode to AF\n";
+        if (verbose) tout << "Set the focus mode to AF\n";
         return;
     }
 
-    tout << "S1 shooting...\n";
-    tout << "Shutter Halfpress down\n";
+    if (verbose) tout << "S1 shooting...\n";
+    if (verbose) tout << "Shutter Halfpress down\n";
     SDK::CrDeviceProperty prop;
     prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
     prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
@@ -180,89 +180,156 @@ void CameraDevice::af_shutter() const
 
     // Wait, then send shutter down
     std::this_thread::sleep_for(500ms);
-    tout << "Shutter down\n";
+    if (verbose) tout << "Shutter down\n";
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
 
     // Wait, then send shutter up
     std::this_thread::sleep_for(35ms);
-    tout << "Shutter up\n";
+    if (verbose) tout << "Shutter up\n";
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
 
     // Wait, then send shutter up
     std::this_thread::sleep_for(1s);
-    tout << "Shutter Halfpress up\n";
+    if (verbose) tout << "Shutter Halfpress up\n";
     prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
     SDK::SetDeviceProperty(m_device_handle, &prop);
 }
 
+
+bool CameraDevice::wait_for_prop_value(SDK::CrDevicePropertyCode prop, CrInt16u value)
+{
+    CrInt32u codes[] = {
+        prop
+    };
+
+    for (int i=0; i<20 ; i++) {
+        SDK::CrDeviceProperty *pProps;
+        CrInt32 numofProps = 0;
+
+        SDK::GetSelectDeviceProperties(m_device_handle, 1, codes, &pProps, &numofProps);
+
+        if (pProps->GetCurrentValue() == value) {
+            tout << "Waited " << i*100 << "ms\n";
+            return true;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+    return false;
+}
+
 void CameraDevice::set_focusmode_manual() 
 {
-    SDK::CrDeviceProperty focusmode_prop;
-    focusmode_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
-    focusmode_prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_MF);
-    SDK::SetDeviceProperty(m_device_handle, &focusmode_prop);
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
+    prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_MF);
+    SDK::SetDeviceProperty(m_device_handle, &prop);
+    
+    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode, SDK::CrFocusMode::CrFocus_MF)) {
+    //     tout << "Manual focus mode set successfully\n";
+    // }
+    // else {
+    //     tout << "Unable to set manual focus mode\n";
+    // }
 }
 
 void CameraDevice::set_focusmode_afs() 
 {
-    SDK::CrDeviceProperty focusmode_prop;
-    focusmode_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
-    focusmode_prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_AF_S);
-    SDK::SetDeviceProperty(m_device_handle, &focusmode_prop);
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
+    prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_AF_S);
+    SDK::SetDeviceProperty(m_device_handle, &prop);
+
+    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode, SDK::CrFocusMode::CrFocus_AF_S)) {
+    //     tout << "AF-S focus mode was set successfully\n";
+    // }
+    // else {
+    //     tout << "Unable to set AF-S focus mode\n";
+    // }
 }
 
 void CameraDevice::half_press_down() 
 {
-    SDK::CrDeviceProperty s1_prop;
-    s1_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
-    s1_prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
-    s1_prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
-    SDK::SetDeviceProperty(m_device_handle, &s1_prop);
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
+    prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
+    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
+    SDK::SetDeviceProperty(m_device_handle, &prop);
+
+    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_S1, SDK::CrLockIndicator::CrLockIndicator_Locked)) {
+    //     tout << "Half press down successful\n";
+    // }
+    // else {
+    //     tout << "Unable to half press down\n";
+    // }
 }
 
 void CameraDevice::half_press_up() 
 {
-    SDK::CrDeviceProperty s1_prop;
-    s1_prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
-    s1_prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
-    s1_prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
-    SDK::SetDeviceProperty(m_device_handle, &s1_prop);
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
+    prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
+    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
+    SDK::SetDeviceProperty(m_device_handle, &prop);
+
+    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_S1, SDK::CrLockIndicator::CrLockIndicator_Unlocked)) {
+    //     tout << "Half press up successful\n";
+    // }
+    // else {
+    //     tout << "Unable to half press up\n";
+    // }
+}
+
+void CameraDevice::set_pcremote_priority()
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_PriorityKeySettings);
+    prop.SetCurrentValue(SDK::CrPriorityKeySettings::CrPriorityKey_PCRemote);
+    SDK::SetDeviceProperty(m_device_handle, &prop);
+
+    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_PriorityKeySettings, SDK::CrPriorityKeySettings::CrPriorityKey_PCRemote)) {
+    //     tout << "PC Remote priority was set successfully\n";
+    // }
+    // else {
+    //     tout << "Unable to set PC remote priority\n";
+    // }
+}
+
+void CameraDevice::set_manual_exposure()
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureProgramMode);
+    prop.SetCurrentValue(SDK::CrExposureProgram::CrExposure_M_Manual);
+    SDK::SetDeviceProperty(m_device_handle, &prop);
+
+    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureProgramMode, SDK::CrExposureProgram::CrExposure_M_Manual)) {
+    //     tout << "Manual exposure was set successfully\n";
+    // }
+    // else {
+    //     tout << "Unable to set manual exposure\n";
+    // }
 }
 
 void CameraDevice::half_full_release()
 {
-    // reset focus mode to Auto single
-    set_focusmode_afs();
-    std::this_thread::sleep_for(500ms);
+    set_pcremote_priority();
+    std::this_thread::sleep_for(2000ms);
 
-    // tout << "Shutter Halfpress down\n";
     half_press_down();
-    std::this_thread::sleep_for(500ms);
-
-    // set to Manual focus mode to ensure shutter release
-    set_focusmode_manual();
     std::this_thread::sleep_for(1200ms);
 
-    // tout << "Shutter down\n";
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
-    std::this_thread::sleep_for(1200ms);
+    std::this_thread::sleep_for(100ms);
 
-    // tout << "Shutter up\n";
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
-    std::this_thread::sleep_for(1200ms);
+    std::this_thread::sleep_for(100ms);
 
-    // tout << "Shutter Halfpress up\n";
     half_press_up();
-    std::this_thread::sleep_for(500ms);
-
-    // set focus mode back to AF-S
-    set_focusmode_afs();
 }
 
 void CameraDevice::continuous_shooting() const
 {
-    tout << "Capture image...\n";
-    tout << "Continuous Shooting\n";
+    if (verbose) tout << "Capture image...\n";
+    if (verbose) tout << "Continuous Shooting\n";
 
     // Set, PriorityKeySettings property
     SDK::CrDeviceProperty priority;
@@ -271,11 +338,11 @@ void CameraDevice::continuous_shooting() const
     priority.SetValueType(SDK::CrDataType::CrDataType_UInt32Array);
     auto err_priority = SDK::SetDeviceProperty(m_device_handle, &priority);
     if (CR_FAILED(err_priority)) {
-        tout << "Priority Key setting FAILED\n";
+        if (verbose) tout << "Priority Key setting FAILED\n";
         return;
     }
     else {
-        tout << "Priority Key setting SUCCESS\n";
+        if (verbose) tout << "Priority Key setting SUCCESS\n";
     }
 
     // Set, still_capture_mode property
@@ -285,82 +352,82 @@ void CameraDevice::continuous_shooting() const
     mode.SetValueType(SDK::CrDataType::CrDataType_UInt32Array);
     auto err_still_capture_mode = SDK::SetDeviceProperty(m_device_handle, &mode);
     if (CR_FAILED(err_still_capture_mode)) {
-        tout << "Still Capture Mode setting FAILED\n";
+        if (verbose) tout << "Still Capture Mode setting FAILED\n";
         return;
     }
     else {
-        tout << "Still Capture Mode setting SUCCESS\n";
+        if (verbose) tout << "Still Capture Mode setting SUCCESS\n";
     }
 
     // get_still_capture_mode();
     std::this_thread::sleep_for(1s);
-    tout << "Shutter down\n";
+    if (verbose) tout << "Shutter down\n";
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
 
     // Wait, then send shutter up
     std::this_thread::sleep_for(500ms);
-    tout << "Shutter up\n";
+    if (verbose) tout << "Shutter up\n";
     SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
 }
 
 void CameraDevice::get_aperture()
 {
     load_properties();
-    tout << format_f_number(m_prop.f_number.current) << '\n';
+    if (verbose) tout << format_f_number(m_prop.f_number.current) << '\n';
 }
 
 void CameraDevice::get_iso()
 {
     load_properties();
 
-    tout << "ISO: " << format_iso_sensitivity(m_prop.iso_sensitivity.current) << '\n';
+    if (verbose) tout << "ISO: " << format_iso_sensitivity(m_prop.iso_sensitivity.current) << '\n';
 }
 
 void CameraDevice::get_shutter_speed()
 {
     load_properties();
-    tout << "Shutter speed: " << format_shutter_speed(m_prop.shutter_speed.current) << '\n';
+    if (verbose) tout << "Shutter speed: " << format_shutter_speed(m_prop.shutter_speed.current) << '\n';
 }
 
 void CameraDevice::get_position_key_setting()
 {
     load_properties();
-    tout << "Position Key Setting: " << format_position_key_setting(m_prop.position_key_setting.current) << '\n';
+    if (verbose) tout << "Position Key Setting: " << format_position_key_setting(m_prop.position_key_setting.current) << '\n';
 }
 
 void CameraDevice::get_exposure_program_mode()
 {
     load_properties();
-    tout << "Exposure Program Mode: " << format_exposure_program_mode(m_prop.exposure_program_mode.current) << '\n';
+    if (verbose) tout << "Exposure Program Mode: " << format_exposure_program_mode(m_prop.exposure_program_mode.current) << '\n';
 }
 
 void CameraDevice::get_still_capture_mode()
 {
     load_properties();
-    tout << "Still Capture Mode: " << format_still_capture_mode(m_prop.still_capture_mode.current) << '\n';
+    if (verbose) tout << "Still Capture Mode: " << format_still_capture_mode(m_prop.still_capture_mode.current) << '\n';
 }
 
 void CameraDevice::get_focus_mode()
 {
     load_properties();
-    tout << "Focus Mode: " << format_focus_mode(m_prop.focus_mode.current) << '\n';
+    if (verbose) tout << "Focus Mode: " << format_focus_mode(m_prop.focus_mode.current) << '\n';
 }
 
 void CameraDevice::get_focus_area()
 {
     load_properties();
-    tout << "Focus Area: " << format_focus_area(m_prop.focus_area.current) << '\n';
+    if (verbose) tout << "Focus Area: " << format_focus_area(m_prop.focus_area.current) << '\n';
 }
 
 void CameraDevice::get_live_view()
 {
-    tout << "GetLiveView...\n";
+    if (verbose) tout << "GetLiveView...\n";
 
     CrInt32 num = 0;
     SDK::CrLiveViewProperty* property = nullptr;
     auto err = SDK::GetLiveViewProperties(m_device_handle, &property, &num);
     if (CR_FAILED(err)) {
-        tout << "GetLiveView FAILED\n";
+        if (verbose) tout << "GetLiveView FAILED\n";
         return;
     }
     SDK::ReleaseLiveViewProperties(m_device_handle, property);
@@ -368,28 +435,28 @@ void CameraDevice::get_live_view()
     SDK::CrImageInfo inf;
     err = SDK::GetLiveViewImageInfo(m_device_handle, &inf);
     if (CR_FAILED(err)) {
-        tout << "GetLiveView FAILED\n";
+        if (verbose) tout << "GetLiveView FAILED\n";
         return;
     }
 
     CrInt32u bufSize = inf.GetBufferSize();
     if (bufSize < 1)
     {
-        tout << "GetLiveView FAILED \n";
+        if (verbose) tout << "GetLiveView FAILED \n";
     }
     else
     {
         auto* image_data = new SDK::CrImageDataBlock();
         if (!image_data)
         {
-            tout << "GetLiveView FAILED (new CrImageDataBlock class)\n";
+            if (verbose) tout << "GetLiveView FAILED (new CrImageDataBlock class)\n";
             return;
         }
         CrInt8u* image_buff = new CrInt8u[bufSize];
         if (!image_buff)
         {
             delete image_data;
-            tout << "GetLiveView FAILED (new Image buffer)\n";
+            if (verbose) tout << "GetLiveView FAILED (new Image buffer)\n";
             return;
         }
         image_data->SetSize(bufSize);
@@ -400,10 +467,10 @@ void CameraDevice::get_live_view()
         {
             // FAILED
             if (err == SDK::CrWarning_Frame_NotUpdated) {
-                tout << "Warning. GetLiveView Frame NotUpdate\n";
+                if (verbose) tout << "Warning. GetLiveView Frame NotUpdate\n";
             }
             else if (err == SDK::CrError_Memory_Insufficient) {
-                tout << "Warning. GetLiveView Memory insufficient\n";
+                if (verbose) tout << "Warning. GetLiveView Memory insufficient\n";
             }
             delete[] image_buff; // Release
             delete image_data; // Release
@@ -423,7 +490,7 @@ void CameraDevice::get_live_view()
                 auto path = fs::current_path();
                 path.append(TEXT("LiveView000000.JPG"));
 #endif
-                tout << path << '\n';
+                if (verbose) tout << path << '\n';
 
                 std::ofstream file(path, std::ios::out | std::ios::binary);
                 if (!file.bad())
@@ -431,7 +498,7 @@ void CameraDevice::get_live_view()
                     file.write((char*)image_data->GetImageData(), image_data->GetImageSize());
                     file.close();
                 }
-                tout << "GetLiveView SUCCESS\n";
+                if (verbose) tout << "GetLiveView SUCCESS\n";
                 delete[] image_buff; // Release
                 delete image_data; // Release
             }
@@ -448,41 +515,41 @@ void CameraDevice::get_live_view()
 void CameraDevice::get_live_view_image_quality()
 {
     load_properties();
-    tout << "Live View Image Quality: " << format_live_view_image_quality(m_prop.live_view_image_quality.current) << '\n';
+    if (verbose) tout << "Live View Image Quality: " << format_live_view_image_quality(m_prop.live_view_image_quality.current) << '\n';
 }
 
 void CameraDevice::get_live_view_status()
 {
     load_properties();
-    tout << "LiveView Enabled: " << format_live_view_status(m_prop.live_view_status.current) << '\n';
+    if (verbose) tout << "LiveView Enabled: " << format_live_view_status(m_prop.live_view_status.current) << '\n';
 }
 
 void CameraDevice::get_select_media_format()
 {
     load_properties();
-    tout << "Media SLOT1 Full Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot1_full_format_enable_status.current) << std::endl;
-    tout << "Media SLOT2 Full Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot2_full_format_enable_status.current) << std::endl;
+    if (verbose) tout << "Media SLOT1 Full Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot1_full_format_enable_status.current) << std::endl;
+    if (verbose) tout << "Media SLOT2 Full Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot2_full_format_enable_status.current) << std::endl;
     // Valid Quick format
     if (m_prop.media_slot1_quick_format_enable_status.writable || m_prop.media_slot2_quick_format_enable_status.writable){
-        tout << "Media SLOT1 Quick Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot1_quick_format_enable_status.current) << std::endl;
-        tout << "Media SLOT2 Quick Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot2_quick_format_enable_status.current) << std::endl;
+        if (verbose) tout << "Media SLOT1 Quick Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot1_quick_format_enable_status.current) << std::endl;
+        if (verbose) tout << "Media SLOT2 Quick Format Enable Status: " << format_media_slotx_format_enable_status(m_prop.media_slot2_quick_format_enable_status.current) << std::endl;
     }
 }
 
 void CameraDevice::get_white_balance()
 {
     load_properties();
-    tout << "White Balance: " << format_white_balance(m_prop.white_balance.current) << '\n';
+    if (verbose) tout << "White Balance: " << format_white_balance(m_prop.white_balance.current) << '\n';
 }
 
 bool CameraDevice::get_custom_wb()
 {
     bool state = false;
     load_properties();
-    tout << "CustomWB Capture Standby Operation: " << format_customwb_capture_stanby(m_prop.customwb_capture_stanby.current) << '\n';
-    tout << "CustomWB Capture Standby CancelOperation: " << format_customwb_capture_stanby_cancel(m_prop.customwb_capture_stanby_cancel.current) << '\n';
-    tout << "CustomWB Capture Operation: " << format_customwb_capture_operation(m_prop.customwb_capture_operation.current) << '\n';
-    tout << "CustomWB Capture Execution State : " << format_customwb_capture_execution_state(m_prop.customwb_capture_execution_state.current) << '\n';
+    if (verbose) tout << "CustomWB Capture Standby Operation: " << format_customwb_capture_stanby(m_prop.customwb_capture_stanby.current) << '\n';
+    if (verbose) tout << "CustomWB Capture Standby CancelOperation: " << format_customwb_capture_stanby_cancel(m_prop.customwb_capture_stanby_cancel.current) << '\n';
+    if (verbose) tout << "CustomWB Capture Operation: " << format_customwb_capture_operation(m_prop.customwb_capture_operation.current) << '\n';
+    if (verbose) tout << "CustomWB Capture Execution State : " << format_customwb_capture_execution_state(m_prop.customwb_capture_execution_state.current) << '\n';
     if (m_prop.customwb_capture_operation.current == 1) {
         state = true;
     }
@@ -492,18 +559,18 @@ bool CameraDevice::get_custom_wb()
 void CameraDevice::get_zoom_operation()
 {
     load_properties();
-    tout << "Zoom Operation Status: " << format_zoom_operation_status(m_prop.zoom_operation_status.current) << '\n';
-    tout << "Zoom Setting Type: " << format_zoom_setting_type(m_prop.zoom_setting_type.current) << '\n';
-    tout << "Zoom Type Status: " << format_zoom_types_status(m_prop.zoom_types_status.current) << '\n';
-    tout << "Zoom Operation: " << format_zoom_operation(m_prop.zoom_operation.current) << '\n';
+    if (verbose) tout << "Zoom Operation Status: " << format_zoom_operation_status(m_prop.zoom_operation_status.current) << '\n';
+    if (verbose) tout << "Zoom Setting Type: " << format_zoom_setting_type(m_prop.zoom_setting_type.current) << '\n';
+    if (verbose) tout << "Zoom Type Status: " << format_zoom_types_status(m_prop.zoom_types_status.current) << '\n';
+    if (verbose) tout << "Zoom Operation: " << format_zoom_operation(m_prop.zoom_operation.current) << '\n';
 
     // Zoom Speed Range is not supported
     if (m_prop.zoom_speed_range.possible.size() < 2) {
-        tout << "Zoom Speed Range: -1 to 1" << std::endl 
+        if (verbose) tout << "Zoom Speed Range: -1 to 1" << std::endl 
              << "Zoom Speed Type: " << format_remocon_zoom_speed_type(m_prop.remocon_zoom_speed_type.current) << std::endl;
     }
     else {
-        tout << "Zoom Speed Range: " << (int)m_prop.zoom_speed_range.possible.at(0) << " to " << (int)m_prop.zoom_speed_range.possible.at(1) << std::endl
+        if (verbose) tout << "Zoom Speed Range: " << (int)m_prop.zoom_speed_range.possible.at(0) << " to " << (int)m_prop.zoom_speed_range.possible.at(1) << std::endl
              << "Zoom Speed Type: " << format_remocon_zoom_speed_type(m_prop.remocon_zoom_speed_type.current) << std::endl;
     }
 
@@ -513,7 +580,7 @@ void CameraDevice::get_zoom_operation()
     auto status = SDK::GetSelectDeviceProperties(m_device_handle, 1, &getCode, &prop_list, &nprop);
 
     if (CR_FAILED(status)) {
-        tout << "Failed to get Zoom Bar Information.\n";
+        if (verbose) tout << "Failed to get Zoom Bar Information.\n";
         return;
     }
 
@@ -521,7 +588,7 @@ void CameraDevice::get_zoom_operation()
         auto prop = prop_list[0];
         if (SDK::CrDevicePropertyCode::CrDeviceProperty_Zoom_Bar_Information == prop.GetCode())
         {
-            tout << "Zoom Bar Information: 0x" << std::hex << prop.GetCurrentValue() << std::dec << '\n';
+            if (verbose) tout << "Zoom Bar Information: 0x" << std::hex << prop.GetCurrentValue() << std::dec << '\n';
         }
         SDK::ReleaseDeviceProperties(m_device_handle, prop_list);
     }
@@ -530,44 +597,44 @@ void CameraDevice::get_zoom_operation()
 void CameraDevice::get_remocon_zoom_speed_type()
 {
     load_properties();
-    tout << "Zoom Speed Type: " << format_remocon_zoom_speed_type(m_prop.remocon_zoom_speed_type.current) << '\n';
+    if (verbose) tout << "Zoom Speed Type: " << format_remocon_zoom_speed_type(m_prop.remocon_zoom_speed_type.current) << '\n';
 }
 
 void CameraDevice::set_aperture()
 {
     if (!m_prop.f_number.writable) {
         // Not a settable property
-        tout << "Aperture is not writable\n";
+        if (verbose) tout << "Aperture is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Aperture value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Aperture value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Aperture value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Aperture value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.f_number.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_f_number(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_f_number(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Aperture value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Aperture value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -584,37 +651,37 @@ void CameraDevice::set_iso()
 {
     if (!m_prop.iso_sensitivity.writable) {
         // Not a settable property
-        tout << "ISO is not writable\n";
+        if (verbose) tout << "ISO is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new ISO value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new ISO value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new ISO value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new ISO value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.iso_sensitivity.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_iso_sensitivity(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_iso_sensitivity(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new ISO value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new ISO value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -673,37 +740,37 @@ void CameraDevice::set_shutter_speed()
 {
     if (!m_prop.shutter_speed.writable) {
         // Not a settable property
-        tout << "Shutter Speed is not writable\n";
+        if (verbose) tout << "Shutter Speed is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Shutter Speed value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Shutter Speed value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Shutter Speed value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Shutter Speed value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.shutter_speed.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_shutter_speed(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_shutter_speed(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Shutter Speed value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Shutter Speed value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -720,37 +787,37 @@ void CameraDevice::set_position_key_setting()
 {
     if (!m_prop.position_key_setting.writable) {
         // Not a settable property
-        tout << "Position Key Setting is not writable\n";
+        if (verbose) tout << "Position Key Setting is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Position Key Setting value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Position Key Setting value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Position Key Setting value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Position Key Setting value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.position_key_setting.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_position_key_setting(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_position_key_setting(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Position Key Setting value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Position Key Setting value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -767,37 +834,37 @@ void CameraDevice::set_exposure_program_mode()
 {
     if (!m_prop.exposure_program_mode.writable) {
         // Not a settable property
-        tout << "Exposure Program Mode is not writable\n";
+        if (verbose) tout << "Exposure Program Mode is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Exposure Program Mode value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Exposure Program Mode value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Exposure Program Mode value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Exposure Program Mode value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.exposure_program_mode.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_exposure_program_mode(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_exposure_program_mode(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Exposure Program Mode value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Exposure Program Mode value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -814,37 +881,37 @@ void CameraDevice::set_still_capture_mode()
 {
     if (!m_prop.still_capture_mode.writable) {
         // Not a settable property
-        tout << "Still Capture Mode is not writable\n";
+        if (verbose) tout << "Still Capture Mode is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Still Capture Mode value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Still Capture Mode value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Still Capture Mode value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Still Capture Mode value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.still_capture_mode.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_still_capture_mode(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_still_capture_mode(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Still Capture Mode value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Still Capture Mode value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -861,37 +928,37 @@ void CameraDevice::set_focus_mode()
 {
     if (!m_prop.focus_mode.writable) {
         // Not a settable property
-        tout << "Focus Mode is not writable\n";
+        if (verbose) tout << "Focus Mode is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Focus Mode value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Focus Mode value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Focus Mode value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Focus Mode value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.focus_mode.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_focus_mode(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_focus_mode(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Focus Mode value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Focus Mode value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -908,37 +975,37 @@ void CameraDevice::set_focus_area()
 {
     if (!m_prop.focus_area.writable) {
         // Not a settable property
-        tout << "Focus Area is not writable\n";
+        if (verbose) tout << "Focus Area is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Focus Area value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Focus Area value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Focus Area value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Focus Area value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.focus_area.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_focus_area(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_focus_area(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Focus Area value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Focus Area value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -955,37 +1022,37 @@ void CameraDevice::set_live_view_image_quality()
 {
     if (!m_prop.live_view_image_quality.writable) {
         // Not a settable property
-        tout << "Live View Image Quality is not writable\n";
+        if (verbose) tout << "Live View Image Quality is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Live View Image Quality value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Live View Image Quality value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Live View Image Quality value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Live View Image Quality value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.live_view_image_quality.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_live_view_image_quality(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_live_view_image_quality(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Live View Image Quality value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Live View Image Quality value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1001,35 +1068,35 @@ void CameraDevice::set_live_view_status()
 {
     if (!m_prop.live_view_status.writable) {
         // Not a settable property
-        tout << "Live View Status is not writable\n";
+        if (verbose) tout << "Live View Status is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new Live View Image Quality value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new Live View Image Quality value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new Live View Status value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Live View Status value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
-    tout << '[' << 1 << "] Disabled" << '\n';
-    tout << '[' << 2 << "] Enabled" << '\n';
+    if (verbose) tout << '[' << 1 << "] Disabled" << '\n';
+    if (verbose) tout << '[' << 2 << "] Enabled" << '\n';
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new Live View Image Quality value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new Live View Image Quality value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || 2 < selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1047,37 +1114,37 @@ void CameraDevice::set_white_balance()
 {
     if (!m_prop.white_balance.writable) {
         // Not a settable property
-        tout << "White Balance is not writable\n";
+        if (verbose) tout << "White Balance is not writable\n";
         return;
     }
 
     text input;
-    tout << std::endl << "Would you like to set a new White Balance value? (y/n): ";
+    if (verbose) tout << std::endl << "Would you like to set a new White Balance value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << std::endl << "Choose a number set a new White Balance value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << std::endl << "Choose a number set a new White Balance value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.white_balance.possible;
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_white_balance(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_white_balance(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << std::endl << "Choose a number set a new White Balance value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << std::endl << "Choose a number set a new White Balance value:\n";
 
-    tout << std::endl << "input> ";
+    if (verbose) tout << std::endl << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1094,23 +1161,23 @@ void CameraDevice::execute_lock_property(CrInt16u code)
     load_properties();
 
     text input;
-    tout << std::endl << "Would you like to execute Unlock or Lock? (y/n): ";
+    if (verbose) tout << std::endl << "Would you like to execute Unlock or Lock? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip execute a new value.\n";
+        if (verbose) tout << "Skip execute a new value.\n";
         return;
     }
 
-    tout << std::endl << "Choose a number :\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << std::endl << "Choose a number :\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
-    tout << "[1] Unlock" << '\n';
-    tout << "[2] Lock" << '\n';
+    if (verbose) tout << "[1] Unlock" << '\n';
+    if (verbose) tout << "[2] Lock" << '\n';
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number :\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number :\n";
 
-    tout << std::endl << "input> ";
+    if (verbose) tout << std::endl << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
@@ -1130,7 +1197,7 @@ void CameraDevice::execute_lock_property(CrInt16u code)
     }
 
     if (-1 == selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1149,7 +1216,7 @@ void CameraDevice::get_af_area_position()
     CrInt32u getCode = SDK::CrLiveViewPropertyCode::CrLiveViewProperty_AF_Area_Position;
     auto err = SDK::GetSelectLiveViewProperties(m_device_handle, 1, &getCode, &lvProperty, &num);
     if (CR_FAILED(err)) {
-        tout << "Failed to get AF Area Position [LiveViewProperties]\n";
+        if (verbose) tout << "Failed to get AF Area Position [LiveViewProperties]\n";
         return;
     }
 
@@ -1174,7 +1241,7 @@ void CameraDevice::get_af_area_position()
                         lvprop.width, lvprop.height,
                         lvprop.xDenominator, lvprop.yDenominator,
                         lvprop.xNumerator, lvprop.yNumerator);
-                    tout << buff << std::endl;
+                    if (verbose) tout << buff << std::endl;
                 }
             }
         }
@@ -1186,18 +1253,18 @@ void CameraDevice::set_af_area_position()
 {
     load_properties();
     // Set, FocusArea property
-    tout << "Set FocusArea to Flexible_Spot_S\n";
+    if (verbose) tout << "Set FocusArea to Flexible_Spot_S\n";
     SDK::CrDeviceProperty prop;
     prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusArea);
     prop.SetCurrentValue(SDK::CrFocusArea::CrFocusArea_Flexible_Spot_S);
     prop.SetValueType(SDK::CrDataType::CrDataType_UInt16Array);
     auto err_prop = SDK::SetDeviceProperty(m_device_handle, &prop);
     if (CR_FAILED(err_prop)) {
-        tout << "FocusArea FAILED\n";
+        if (verbose) tout << "FocusArea FAILED\n";
         return;
     }
     else {
-        tout << "FocusArea SUCCESS\n";
+        if (verbose) tout << "FocusArea SUCCESS\n";
     }
 
     std::this_thread::sleep_for(500ms);
@@ -1215,7 +1282,7 @@ void CameraDevice::set_select_media_format()
     if ((SDK::CrMediaFormat::CrMediaFormat_Disable == m_prop.media_slot1_full_format_enable_status.current) &&
         (SDK::CrMediaFormat::CrMediaFormat_Disable == m_prop.media_slot2_full_format_enable_status.current)) {
             // Not a settable property
-        tout << std::endl << "Slot1 and Slot2 is can not format\n";
+        if (verbose) tout << std::endl << "Slot1 and Slot2 is can not format\n";
         return;
     }
 
@@ -1227,28 +1294,28 @@ void CameraDevice::set_select_media_format()
     }
 
     text input;
-    tout << std::endl << "Would you like to format the media? (y/n):" << std::endl;
+    if (verbose) tout << std::endl << "Would you like to format the media? (y/n):" << std::endl;
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip format.\n";
+        if (verbose) tout << "Skip format.\n";
         return;
     }
 
     // Full or Quick
     if (validQuickFormat) {
-        tout << "Choose a format type number : " << std::endl;
-        tout << "[-1] Cancel input" << std::endl;
-        tout << "[1] Full Format" << std::endl;
-        tout << "[2] Quick Format" << std::endl;
+        if (verbose) tout << "Choose a format type number : " << std::endl;
+        if (verbose) tout << "[-1] Cancel input" << std::endl;
+        if (verbose) tout << "[1] Full Format" << std::endl;
+        if (verbose) tout << "[2] Quick Format" << std::endl;
 
-        tout << std::endl << "input> ";
+        if (verbose) tout << std::endl << "input> ";
         std::getline(tin, input);
         text_stringstream sstype(input);
         int selected_type = 0;
         sstype >> selected_type;
 
         if ((selected_type < 1) || (2 < selected_type)) {
-            tout << "Input cancelled.\n";
+            if (verbose) tout << "Input cancelled.\n";
             return;
         }
 
@@ -1257,20 +1324,20 @@ void CameraDevice::set_select_media_format()
         }
     }
 
-    tout << std::endl << "Choose a number Which media do you want to format ? \n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << std::endl << "Choose a number Which media do you want to format ? \n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
-    tout << "[1] SLOT1" << '\n';
-    tout << "[2] SLOT2" << '\n';
+    if (verbose) tout << "[1] SLOT1" << '\n';
+    if (verbose) tout << "[2] SLOT2" << '\n';
 
-    tout << std::endl << "input> ";
+    if (verbose) tout << std::endl << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if ((selected_index < 1) || (2 < selected_index)) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1295,20 +1362,20 @@ void CameraDevice::set_select_media_format()
 
     if (0xFFFF == ptpValue)
     {
-        tout << std::endl << "The Selected slot cannot be formatted.\n";
+        if (verbose) tout << std::endl << "The Selected slot cannot be formatted.\n";
         return;
     }
 
-    tout << std::endl << "All data will be deleted.Is it OK ? (y/n) \n";
+    if (verbose) tout << std::endl << "All data will be deleted.Is it OK ? (y/n) \n";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip format.\n";
+        if (verbose) tout << "Skip format.\n";
         return;
     }
 
     SDK::SendCommand(m_device_handle, ptpFormatType, (SDK::CrCommandParam)ptpValue);
 
-    tout << std::endl << "Formatting .....\n";
+    if (verbose) tout << std::endl << "Formatting .....\n";
 
     int startflag = 0;
     CrInt32u getCodes = SDK::CrDevicePropertyCode::CrDeviceProperty_Media_FormatProgressRate;
@@ -1321,7 +1388,7 @@ void CameraDevice::set_select_media_format()
     {
         auto status = SDK::GetSelectDeviceProperties(m_device_handle, 1, &getCodes, &prop_list, &nprop);
         if (CR_FAILED(status)) {
-            tout << "Failed to get Media FormatProgressRate.\n";
+            if (verbose) tout << "Failed to get Media FormatProgressRate.\n";
             return;
         }
         if (prop_list && 1 == nprop) {
@@ -1335,12 +1402,12 @@ void CameraDevice::set_select_media_format()
                 }
                 if ((1 == startflag) && (0 == prop.GetCurrentValue()))
                 {
-                    tout << std::endl << "Format completed " << '\n';
+                    if (verbose) tout << std::endl << "Format completed " << '\n';
                     SDK::ReleaseDeviceProperties(m_device_handle, prop_list);
                     prop_list = nullptr;
                     break;
                 }
-                tout << "\r" << "FormatProgressRate:" << prop.GetCurrentValue();
+                if (verbose) tout << "\r" << "FormatProgressRate:" << prop.GetCurrentValue();
             }
         }
         std::this_thread::sleep_for(250ms);
@@ -1354,30 +1421,30 @@ void CameraDevice::execute_movie_rec()
     load_properties();
 
     text input;
-    tout << std::endl << "Operate the movie recording button ? (y/n):";
+    if (verbose) tout << std::endl << "Operate the movie recording button ? (y/n):";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip .\n";
+        if (verbose) tout << "Skip .\n";
         return;
     }
 
-    tout << "Choose a number :\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number :\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
-    tout << "[1] Up" << '\n';
-    tout << "[2] Down" << '\n';
+    if (verbose) tout << "[1] Up" << '\n';
+    if (verbose) tout << "[2] Down" << '\n';
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number :\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number :\n";
 
-    tout << std::endl << "input> ";
+    if (verbose) tout << std::endl << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1395,7 +1462,7 @@ void CameraDevice::execute_movie_rec()
     }
 
     if (-1 == selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1406,58 +1473,58 @@ void CameraDevice::execute_movie_rec()
 void CameraDevice::set_custom_wb()
 {
     // Set, PriorityKeySettings property
-    tout << std::endl << "Set camera to PC remote";
+    if (verbose) tout << std::endl << "Set camera to PC remote";
     SDK::CrDeviceProperty priority;
     priority.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_PriorityKeySettings);
     priority.SetCurrentValue(SDK::CrPriorityKeySettings::CrPriorityKey_PCRemote);
     priority.SetValueType(SDK::CrDataType::CrDataType_UInt32Array);
     auto err_priority = SDK::SetDeviceProperty(m_device_handle, &priority);
     if (CR_FAILED(err_priority)) {
-        tout << "Priority Key setting FAILED\n";
+        if (verbose) tout << "Priority Key setting FAILED\n";
         return;
     }
     else {
-        tout << "Priority Key setting SUCCESS\n";
+        if (verbose) tout << "Priority Key setting SUCCESS\n";
     }
     std::this_thread::sleep_for(500ms);
     get_position_key_setting();
 
     // Set, ExposureProgramMode property
-    tout << std::endl << "Set the Exposure Program mode to P mode";
+    if (verbose) tout << std::endl << "Set the Exposure Program mode to P mode";
     SDK::CrDeviceProperty expromode;
     expromode.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureProgramMode);
     expromode.SetCurrentValue(SDK::CrExposureProgram::CrExposure_P_Auto);
     expromode.SetValueType(SDK::CrDataType::CrDataType_UInt16Array);
     auto err_expromode = SDK::SetDeviceProperty(m_device_handle, &expromode);
     if (CR_FAILED(err_expromode)) {
-        tout << "Exposure Program mode FAILED\n";
+        if (verbose) tout << "Exposure Program mode FAILED\n";
         return;
     }
     else {
-        tout << "Exposure Program mode SUCCESS\n";
+        if (verbose) tout << "Exposure Program mode SUCCESS\n";
     }
     std::this_thread::sleep_for(500ms);
     get_exposure_program_mode();
 
     // Set, White Balance property
-    tout << std::endl << "Set the White Balance to Custom1\n";
+    if (verbose) tout << std::endl << "Set the White Balance to Custom1\n";
     SDK::CrDeviceProperty wb;
     wb.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_WhiteBalance);
     wb.SetCurrentValue(SDK::CrWhiteBalanceSetting::CrWhiteBalance_Custom_1);
     wb.SetValueType(SDK::CrDataType::CrDataType_UInt16Array);
     auto err_wb = SDK::SetDeviceProperty(m_device_handle, &wb);
     if (CR_FAILED(err_wb)) {
-        tout << "White Balance FAILED\n";
+        if (verbose) tout << "White Balance FAILED\n";
         return;
     }
     else {
-        tout << "White Balance SUCCESS\n";
+        if (verbose) tout << "White Balance SUCCESS\n";
     }
     std::this_thread::sleep_for(2000ms);
     get_white_balance();
 
     // Set, custom WB capture standby 
-    tout << std::endl << "Set custom WB capture standby " << std::endl;
+    if (verbose) tout << std::endl << "Set custom WB capture standby " << std::endl;
 
     bool execStat = false;
     int i = 0;
@@ -1465,7 +1532,7 @@ void CameraDevice::set_custom_wb()
     {
         execute_downup_property(SDK::CrDevicePropertyCode::CrDeviceProperty_CustomWB_Capture_Standby);
         std::this_thread::sleep_for(1000ms);
-        tout << std::endl;
+        if (verbose) tout << std::endl;
         execStat = get_custom_wb();
         i++;
 
@@ -1473,28 +1540,28 @@ void CameraDevice::set_custom_wb()
 
     if (false == execStat)
     {
-        tout << std::endl << "CustomWB Capture Standby FAILED\n";
+        if (verbose) tout << std::endl << "CustomWB Capture Standby FAILED\n";
         return;
     }
 
     // Set, custom WB capture 
-    tout << std::endl << "Set custom WB capture ";
+    if (verbose) tout << std::endl << "Set custom WB capture ";
     execute_pos_xy(SDK::CrDevicePropertyCode::CrDeviceProperty_CustomWB_Capture);
 
     std::this_thread::sleep_for(5000ms);
 
     // Set, custom WB capture standby cancel 
     text input;
-    tout << std::endl << "Set custom WB capture standby cancel. Please enter something. " << std::endl;
+    if (verbose) tout << std::endl << "Set custom WB capture standby cancel. Please enter something. " << std::endl;
     std::getline(tin, input);
     if (0 == input.size() || 0 < input.size()) {
         execute_downup_property(SDK::CrDevicePropertyCode::CrDeviceProperty_CustomWB_Capture_Standby_Cancel);
         get_custom_wb();
-        tout << std::endl << "Finish custom WB capture\n";
+        if (verbose) tout << std::endl << "Finish custom WB capture\n";
     }
     else
     {
-        tout << std::endl << "Did not finish normally\n";
+        if (verbose) tout << std::endl << "Did not finish normally\n";
     }
 }
 
@@ -1503,10 +1570,10 @@ void CameraDevice::set_zoom_operation()
     load_properties();
 
     text input;
-    tout << std::endl << "Operate the zoom ? (y/n):";
+    if (verbose) tout << std::endl << "Operate the zoom ? (y/n):";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip .\n";
+        if (verbose) tout << "Skip .\n";
         return;
     }
 
@@ -1517,17 +1584,17 @@ void CameraDevice::set_zoom_operation()
 
         // Zoom Speed Range is not supported
         if (m_prop.zoom_speed_range.possible.size() < 2) {
-            tout << std::endl << "Choose a number :\n";
-            tout << "[-1] Cancel input\n";
+            if (verbose) tout << std::endl << "Choose a number :\n";
+            if (verbose) tout << "[-1] Cancel input\n";
 
-            tout << "[0] Stop" << '\n';
-            tout << "[1] Wide" << '\n';
-            tout << "[2] Tele" << '\n';
+            if (verbose) tout << "[0] Stop" << '\n';
+            if (verbose) tout << "[1] Wide" << '\n';
+            if (verbose) tout << "[2] Tele" << '\n';
 
-            tout << "[-1] Cancel input\n";
-            tout << "Choose a number :\n";
+            if (verbose) tout << "[-1] Cancel input\n";
+            if (verbose) tout << "Choose a number :\n";
 
-            tout << std::endl << "input> ";
+            if (verbose) tout << std::endl << "input> ";
             std::getline(tin, input);
             text_stringstream ss(input);
             int selected_index = 0;
@@ -1544,14 +1611,14 @@ void CameraDevice::set_zoom_operation()
                 ptpValue = SDK::CrZoomOperation::CrZoomOperation_Tele;
                 break;
             default:
-                tout << "Input cancelled.\n";
+                if (verbose) tout << "Input cancelled.\n";
                 return;
                 break;
             }
         }
         else{
-            tout << std::endl << "Set the value of zoom speed (Out-of-range value to Cancel) :\n";
-            tout << std::endl << "input> ";
+            if (verbose) tout << std::endl << "Set the value of zoom speed (Out-of-range value to Cancel) :\n";
+            if (verbose) tout << std::endl << "input> ";
             std::getline(tin, input);
             text_stringstream ss(input);
             int input_value = 0;
@@ -1562,7 +1629,7 @@ void CameraDevice::set_zoom_operation()
             {
                 cancel = true;
                 ptpValue = SDK::CrZoomOperation::CrZoomOperation_Stop;
-                tout << "Input cancelled.\n";
+                if (verbose) tout << "Input cancelled.\n";
             }
             else {
                 ptpValue = (CrInt64)input_value;
@@ -1585,38 +1652,38 @@ void CameraDevice::set_remocon_zoom_speed_type()
 {
     if (!m_prop.remocon_zoom_speed_type.writable) {
         // Not a settable property
-        tout << "Zoom speed type is not writable\n";
+        if (verbose) tout << "Zoom speed type is not writable\n";
         return;
     }
 
     text input;
-    tout << "Would you like to set a new zoom speed type value? (y/n): ";
+    if (verbose) tout << "Would you like to set a new zoom speed type value? (y/n): ";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip setting a new value.\n";
+        if (verbose) tout << "Skip setting a new value.\n";
         return;
     }
 
-    tout << "Choose a number set a new zoom speed type value:\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new zoom speed type value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
     auto& values = m_prop.remocon_zoom_speed_type.possible;
 
     for (std::size_t i = 0; i < values.size(); ++i) {
-        tout << '[' << i << "] " << format_remocon_zoom_speed_type(values[i]) << '\n';
+        if (verbose) tout << '[' << i << "] " << format_remocon_zoom_speed_type(values[i]) << '\n';
     }
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number set a new zoom speed type value:\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number set a new zoom speed type value:\n";
 
-    tout << "input> ";
+    if (verbose) tout << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
     ss >> selected_index;
 
     if (selected_index < 0 || values.size() <= selected_index) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
@@ -1653,51 +1720,51 @@ void CameraDevice::execute_pos_xy(CrInt16u code)
     load_properties();
 
     text input;
-    tout << std::endl << "Change position ? (y/n):";
+    if (verbose) tout << std::endl << "Change position ? (y/n):";
     std::getline(tin, input);
     if (input != TEXT("y")) {
-        tout << "Skip.\n";
+        if (verbose) tout << "Skip.\n";
         return;
     }
 
-    tout << std::endl << "Set the value of X (decimal)" << std::endl;
-    tout << "Regarding details of usage, please check API doc." << std::endl;
+    if (verbose) tout << std::endl << "Set the value of X (decimal)" << std::endl;
+    if (verbose) tout << "Regarding details of usage, please check API doc." << std::endl;
 
-    tout << std::endl << "input X> ";
+    if (verbose) tout << std::endl << "input X> ";
     std::getline(tin, input);
     text_stringstream ss1(input);
     CrInt32u x = 0;
     ss1 >> x;
 
     if (x < 0 || x > 639) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
-    tout << "input X = " << x << '\n';
+    if (verbose) tout << "input X = " << x << '\n';
 
     std::this_thread::sleep_for(1000ms);
 
-    tout << std::endl << "Set the value of Y (decimal)" << std::endl;
+    if (verbose) tout << std::endl << "Set the value of Y (decimal)" << std::endl;
 
-    tout << std::endl << "input Y> ";
+    if (verbose) tout << std::endl << "input Y> ";
     std::getline(tin, input);
     text_stringstream ss2(input);
     CrInt32u y = 0;
     ss2 >> y;
 
     if (y < 0 || y > 479 ) {
-        tout << "Input cancelled.\n";
+        if (verbose) tout << "Input cancelled.\n";
         return;
     }
 
-    tout << "input Y = "<< y << '\n';
+    if (verbose) tout << "input Y = "<< y << '\n';
 
     std::this_thread::sleep_for(1000ms);
 
     int x_y = x << 16 | y;
 
-    tout << std::endl << "input X_Y = 0x" << std::hex << x_y << std::dec << '\n';
+    if (verbose) tout << std::endl << "input X_Y = 0x" << std::hex << x_y << std::dec << '\n';
 
     SDK::CrDeviceProperty prop;
     prop.SetCode(code);
@@ -1717,33 +1784,33 @@ void CameraDevice::execute_preset_focus()
     if ((!m_prop.save_zoom_and_focus_position.writable) &&
         (!m_prop.load_zoom_and_focus_position.writable)){
         // Not a settable property
-        tout << "Preset Focus is not supported.\n";
+        if (verbose) tout << "Preset Focus is not supported.\n";
         return;
     }
 
-    tout << std::endl << "Save Zoom and Focus Position Enable Preset number: " << std::endl;
+    if (verbose) tout << std::endl << "Save Zoom and Focus Position Enable Preset number: " << std::endl;
     for (int i = 0; i < values_save.size(); i++)
     {
-        tout << " " << (int)values_save.at(i) << std::endl;
+        if (verbose) tout << " " << (int)values_save.at(i) << std::endl;
     }
 
-    tout << std::endl << "Load Zoom and Focus Position Enable Preset number: " << std::endl;
+    if (verbose) tout << std::endl << "Load Zoom and Focus Position Enable Preset number: " << std::endl;
     for (int i = 0; i < values_load.size(); i++)
     {
-        tout << " " << (int)values_load.at(i) << std::endl;
+        if (verbose) tout << " " << (int)values_load.at(i) << std::endl;
     }
 
-    tout << std::endl << "Set the value of operation :\n";
-    tout << "[-1] Cancel input\n";
+    if (verbose) tout << std::endl << "Set the value of operation :\n";
+    if (verbose) tout << "[-1] Cancel input\n";
 
-    tout << "[1] Save Zoom and Focus Position\n";
-    tout << "[2] Load Zoom and Focus Position\n";
+    if (verbose) tout << "[1] Save Zoom and Focus Position\n";
+    if (verbose) tout << "[2] Load Zoom and Focus Position\n";
 
-    tout << "[-1] Cancel input\n";
-    tout << "Choose a number :\n";
+    if (verbose) tout << "[-1] Cancel input\n";
+    if (verbose) tout << "Choose a number :\n";
 
     text input;
-    tout << std::endl << "input> ";
+    if (verbose) tout << std::endl << "input> ";
     std::getline(tin, input);
     text_stringstream ss(input);
     int selected_index = 0;
@@ -1757,13 +1824,13 @@ void CameraDevice::execute_preset_focus()
         code = SDK::CrDevicePropertyCode::CrDeviceProperty_ZoomAndFocusPosition_Load;
     }
     else {
-        tout << "The Selected operation is not supported.\n";
+        if (verbose) tout << "The Selected operation is not supported.\n";
         return;
     }
 
-    tout << "Set the value of Preset number :\n";
+    if (verbose) tout << "Set the value of Preset number :\n";
 
-    tout << std::endl << "input> ";
+    if (verbose) tout << std::endl << "input> ";
     std::getline(tin, input);
     text_stringstream ss_slot(input);
     int input_value = 0;
@@ -1771,13 +1838,13 @@ void CameraDevice::execute_preset_focus()
 
     if (code == SDK::CrDevicePropertyCode::CrDeviceProperty_ZoomAndFocusPosition_Save) {
         if (find(values_save.begin(), values_save.end(), input_value) == values_save.end()) {
-            tout << "Input cancelled.\n";
+            if (verbose) tout << "Input cancelled.\n";
             return;
         }
     }
     else {
         if (find(values_load.begin(), values_load.end(), input_value) == values_load.end()) {
-            tout << "Input cancelled.\n";
+            if (verbose) tout << "Input cancelled.\n";
             return;
         }
     }
@@ -1858,18 +1925,18 @@ void CameraDevice::OnDisconnected(CrInt32u error)
 
 void CameraDevice::OnPropertyChanged()
 {
-    // tout << "Property changed.\n";
+    // if (verbose) tout << "Property changed.\n";
 }
 
 void CameraDevice::OnLvPropertyChanged()
 {
-    // tout << "LvProperty changed.\n";
+    // if (verbose) tout << "LvProperty changed.\n";
 }
 
 void CameraDevice::OnCompleteDownload(CrChar* filename)
 {
     text file(filename);
-    tout << "Complete download. File: " << file.data() << '\n';
+    tout << "Download Complete (" << file.data() << ")\n";
 
     if (release_on_completedownload) {
         releaseExitSuccess();
@@ -1881,23 +1948,23 @@ void CameraDevice::OnNotifyContentsTransfer(CrInt32u notify, SDK::CrContentHandl
     // Start
     if (SDK::CrNotify_ContentsTransfer_Start == notify)
     {
-        tout << "[START] Contents Handle: 0x " << std::hex << contentHandle << std::dec << std::endl;
+        if (verbose) tout << "[START] Contents Handle: 0x " << std::hex << contentHandle << std::dec << std::endl;
     }
     // Complete
     else if (SDK::CrNotify_ContentsTransfer_Complete == notify)
     {
         text file(filename);
-        tout << "[COMPLETE] Contents Handle: 0x" << std::hex << contentHandle << std::dec << ", File: " << file.data() << std::endl;
+        if (verbose) tout << "[COMPLETE] Contents Handle: 0x" << std::hex << contentHandle << std::dec << ", File: " << file.data() << std::endl;
     }
     // Other
     else
     {
         text msg = get_message_desc(notify);
         if (msg.empty()) {
-            tout << "[-] Content transfer failure. 0x" << std::hex << notify << ", handle: 0x" << contentHandle << std::dec << std::endl;
+            if (verbose) tout << "[-] Content transfer failure. 0x" << std::hex << notify << ", handle: 0x" << contentHandle << std::dec << std::endl;
         } else {
-            tout << "[-] Content transfer failure. handle: 0x" << std::hex << contentHandle  << std::dec << std::endl << "    -> ";
-            tout << msg.data() << std::endl;
+            if (verbose) tout << "[-] Content transfer failure. handle: 0x" << std::hex << contentHandle  << std::dec << std::endl << "    -> ";
+            if (verbose) tout << msg.data() << std::endl;
         }
     }
 }
@@ -1906,7 +1973,7 @@ void CameraDevice::OnWarning(CrInt32u warning)
 {
     text id(this->get_id());
     if (SDK::CrWarning_Connect_Reconnecting == warning) {
-        tout << "Device Disconnected. Reconnecting... " << m_info->GetModel() << " (" << id.data() << ")\n";
+        if (verbose) tout << "Device Disconnected. Reconnecting... " << m_info->GetModel() << " (" << id.data() << ")\n";
         return;
     }
     switch (warning)
@@ -1914,12 +1981,12 @@ void CameraDevice::OnWarning(CrInt32u warning)
     case SDK::CrWarning_ContentsTransferMode_Invalid:
     case SDK::CrWarning_ContentsTransferMode_DeviceBusy:
     case SDK::CrWarning_ContentsTransferMode_StatusError:
-        tout << "\nThe camera is in a condition where it cannot transfer content.\n\n";
-        tout << "Please input '0' to return to the TOP-MENU and connect again.\n";
+        if (verbose) tout << "\nThe camera is in a condition where it cannot transfer content.\n\n";
+        if (verbose) tout << "Please input '0' to return to the TOP-MENU and connect again.\n";
         break;
     case SDK::CrWarning_ContentsTransferMode_CanceledFromCamera:
-        tout << "\nContent transfer mode canceled.\n";
-        tout << "If you want to continue content transfer, input '0' to return to the TOP-MENU and connect again.\n\n";
+        if (verbose) tout << "\nContent transfer mode canceled.\n";
+        if (verbose) tout << "If you want to continue content transfer, input '0' to return to the TOP-MENU and connect again.\n\n";
         break;
     default:
         return;
@@ -1928,25 +1995,25 @@ void CameraDevice::OnWarning(CrInt32u warning)
 
 void CameraDevice::OnPropertyChangedCodes(CrInt32u num, CrInt32u* codes)
 {
-    //tout << "Property changed.  num = " << std::dec << num;
-    //tout << std::hex;
+    //if (verbose) tout << "Property changed.  num = " << std::dec << num;
+    //if (verbose) tout << std::hex;
     //for (std::int32_t i = 0; i < num; ++i)
     //{
-    //    tout << ", 0x" << codes[i];
+    //    if (verbose) tout << ", 0x" << codes[i];
     //}
-    //tout << std::endl << std::dec;
+    //if (verbose) tout << std::endl << std::dec;
     load_properties(num, codes);
 }
 
 void CameraDevice::OnLvPropertyChangedCodes(CrInt32u num, CrInt32u* codes)
 {
-    //tout << "LvProperty changed.  num = " << std::dec << num;
-    //tout << std::hex;
+    //if (verbose) tout << "LvProperty changed.  num = " << std::dec << num;
+    //if (verbose) tout << std::hex;
     //for (std::int32_t i = 0; i < num; ++i)
     //{
-    //    tout << ", 0x" << codes[i];
+    //    if (verbose) tout << ", 0x" << codes[i];
     //}
-    //tout << std::endl;
+    //if (verbose) tout << std::endl;
 #if 0 
     SDK::CrLiveViewProperty* lvProperty = nullptr;
     int32_t nprop = 0;
@@ -1972,7 +2039,7 @@ void CameraDevice::OnLvPropertyChangedCodes(CrInt32u num, CrInt32u* codes)
                             lvprop.width, lvprop.height,
                             lvprop.xDenominator, lvprop.yDenominator,
                             lvprop.xNumerator, lvprop.yNumerator);
-                        tout << buff << std::endl;
+                        if (verbose) tout << buff << std::endl;
                     }
                 }
             }
@@ -1990,14 +2057,14 @@ void CameraDevice::OnLvPropertyChangedCodes(CrInt32u num, CrInt32u* codes)
                         pMagPosInfo->width, pMagPosInfo->height,
                         pMagPosInfo->xDenominator, pMagPosInfo->yDenominator,
                         pMagPosInfo->xNumerator, pMagPosInfo->yNumerator);
-                    tout << buff << std::endl;
+                    if (verbose) tout << buff << std::endl;
                 }
             }
         }
         SDK::ReleaseLiveViewProperties(m_device_handle, lvProperty);
     }
 #endif
-    tout << std::dec;
+    if (verbose) tout << std::dec;
 }
 
 void CameraDevice::OnError(CrInt32u error)
@@ -2006,18 +2073,18 @@ void CameraDevice::OnError(CrInt32u error)
     text msg = get_message_desc(error);
     if (!msg.empty()) {
         // output is 2 line
-        tout << std::endl << msg.data() << std::endl;
-        tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
+        if (verbose) tout << std::endl << msg.data() << std::endl;
+        if (verbose) tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
         if (SDK::CrError_Connect_TimeOut == error) {
             // append 1 line
-            tout << "Please input '0' after Connect camera" << std::endl;
+            if (verbose) tout << "Please input '0' after Connect camera" << std::endl;
             return;
         }
         if (SDK::CrError_Connect_Disconnected == error)
         {
             return;
         }
-        tout << "Please input '0' to return to the TOP-MENU\n";
+        if (verbose) tout << "Please input '0' to return to the TOP-MENU\n";
     }
 }
 
@@ -2040,7 +2107,7 @@ void CameraDevice::load_properties(CrInt32u num, CrInt32u* codes)
     }
 
     if (CR_FAILED(status)) {
-        tout << "Failed to get device properties.\n";
+        if (verbose) tout << "Failed to get device properties.\n";
         return;
     }
 
@@ -2332,7 +2399,7 @@ void CameraDevice::getContentsList()
         SDK::ReleaseDeviceProperties(m_device_handle, prop_list);
     }
     if (false == bExec) {
-        tout << "GetContentsListEnableStatus is Disable. Do it after it becomes Enable.\n";
+        if (verbose) tout << "GetContentsListEnableStatus is Disable. Do it after it becomes Enable.\n";
         return;
     }
 
@@ -2355,7 +2422,7 @@ void CameraDevice::getContentsList()
     {
         if (f_list)
         {
-            tout << "NumOfFolder [" << f_nums << "]" << std::endl;
+            if (verbose) tout << "NumOfFolder [" << f_nums << "]" << std::endl;
 
             for (int i = 0; i < f_nums; ++i)
             {
@@ -2385,7 +2452,7 @@ void CameraDevice::getContentsList()
             {
                 if (c_list)
                 {
-                    tout << "(" << (fcnt + 1) << "/" << f_nums << ") NumOfContents [" << c_nums << "]" << std::endl;
+                    if (verbose) tout << "(" << (fcnt + 1) << "/" << f_nums << ") NumOfContents [" << c_nums << "]" << std::endl;
                     (*it)->numOfContents = c_nums;
                     for (int i = 0; i < c_nums; i++)
                     {
@@ -2397,7 +2464,7 @@ void CameraDevice::getContentsList()
                             // progress
                             if (0 == ((i + 1) % 100))
                             {
-                                tout << "  ... " << (i + 1) << "/" << c_nums << std::endl;
+                                if (verbose) tout << "  ... " << (i + 1) << "/" << c_nums << std::endl;
                             }
                         }
                         else
@@ -2416,13 +2483,13 @@ void CameraDevice::getContentsList()
     }
     else if (CR_SUCCEEDED(err) && 0 == f_nums)
     {
-        tout << "No images in memory card." << std::endl;
+        if (verbose) tout << "No images in memory card." << std::endl;
         return;
     }
     else
     {
         // err
-        tout << "Failed SDK::GetContentsList()" << std::endl;
+        if (verbose) tout << "Failed SDK::GetContentsList()" << std::endl;
         return;
     }
 
@@ -2433,7 +2500,7 @@ void CameraDevice::getContentsList()
         {
             text fname((*itF)->pFolder->folderName);
             printf("===== %#3d : ", (f_sep + 1));
-            tout << fname;
+            if (verbose) tout << fname;
             printf(" (0x%08X) , contents[%d] ===== \n", (*itF)->pFolder->handle, (*itF)->numOfContents);
 
             MtpContentsList::iterator itC = m_contentList.begin();
@@ -2443,7 +2510,7 @@ void CameraDevice::getContentsList()
                 {
                     text fname((*itC)->fileName);
                     printf("  %#3d : (0x%08X), ", (i + 1), (*itC)->handle);
-                    tout << fname << std::endl;
+                    if (verbose) tout << fname << std::endl;
                 }
             }
         }
@@ -2454,9 +2521,9 @@ void CameraDevice::getContentsList()
                 break;
             }
             text input;
-            tout << std::endl << "Select the number of the contents you want to download :";
-            tout << std::endl << "(Returns to the previous menu for invalid numbers)" << std::endl << std::endl;
-            tout << std::endl << "input> ";
+            if (verbose) tout << std::endl << "Select the number of the contents you want to download :";
+            if (verbose) tout << std::endl << "(Returns to the previous menu for invalid numbers)" << std::endl << std::endl;
+            if (verbose) tout << std::endl << "input> ";
             std::getline(tin, input);
             text_stringstream ss(input);
             int selected_index = 0;
@@ -2464,7 +2531,7 @@ void CameraDevice::getContentsList()
             if (selected_index < 1 || m_contentList.size() < selected_index)
             {
                 if (m_connected != false) {
-                    tout << "Input cancelled.\n";
+                    if (verbose) tout << "Input cancelled.\n";
                 }
                 break;
             }
@@ -2478,19 +2545,19 @@ void CameraDevice::getContentsList()
                     auto targetHandle = m_contentList[selected_index - 1]->handle;
                     printf("Selected (0x%04X) ... \n", targetHandle);
                     text input;
-                    tout << std::endl << "Select the number of the content size you want to download :";
-                    tout << std::endl << "[-1] Cancel input";
-                    tout << std::endl << "[1] Original";
-                    tout << std::endl << "[2] Thumbnail";
+                    if (verbose) tout << std::endl << "Select the number of the content size you want to download :";
+                    if (verbose) tout << std::endl << "[-1] Cancel input";
+                    if (verbose) tout << std::endl << "[1] Original";
+                    if (verbose) tout << std::endl << "[2] Thumbnail";
                     text namefull(m_contentList[selected_index - 1]->fileName);
                     text ext = namefull.substr(namefull.length() - 4, 4);
                     if ((0 == ext.compare(TEXT(".JPG"))) || 
                         (0 == ext.compare(TEXT(".ARW"))) || 
                         (0 == ext.compare(TEXT(".HIF"))))
                     {
-                        tout << std::endl << "[3] 2M" << std::endl;
+                        if (verbose) tout << std::endl << "[3] 2M" << std::endl;
                     }
-                    tout << std::endl << "input> ";
+                    if (verbose) tout << std::endl << "input> ";
                     std::getline(tin, input);
                     text_stringstream ss(input);
                     int selected_contentSize = 0;
@@ -2501,7 +2568,7 @@ void CameraDevice::getContentsList()
                     if (selected_contentSize < 1 || 3 < selected_contentSize)
                     {
                         if (m_connected != false) {
-                            tout << "Input cancelled.\n";
+                            if (verbose) tout << "Input cancelled.\n";
                         }
                         break;
                     }
@@ -2540,8 +2607,8 @@ void CameraDevice::pullContents(SDK::CrContentHandle content)
         text msg = get_message_desc(err);
         if (!msg.empty()) {
             // output is 2 line
-            tout << std::endl << msg.data() << ", handle=" << std::hex << content << std::dec << std::endl;
-            tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
+            if (verbose) tout << std::endl << msg.data() << ", handle=" << std::hex << content << std::dec << std::endl;
+            if (verbose) tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
         }
     }
 }
@@ -2557,8 +2624,8 @@ void CameraDevice::getScreennail(SDK::CrContentHandle content)
         text msg = get_message_desc(err);
         if (!msg.empty()) {
             // output is 2 line
-            tout << std::endl << msg.data() << ", handle=" << std::hex << content << std::dec << std::endl;
-            tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
+            if (verbose) tout << std::endl << msg.data() << ", handle=" << std::hex << content << std::dec << std::endl;
+            if (verbose) tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
         }
     }
 }
@@ -2570,14 +2637,14 @@ void CameraDevice::getThumbnail(SDK::CrContentHandle content)
     auto* image_data = new SDK::CrImageDataBlock();
     if (!image_data)
     {
-        tout << "getThumbnail FAILED (new CrImageDataBlock class)\n";
+        if (verbose) tout << "getThumbnail FAILED (new CrImageDataBlock class)\n";
         return;
     }
     CrInt8u* image_buff = new CrInt8u[bufSize];
     if (!image_buff)
     {
         delete image_data;
-        tout << "getThumbnail FAILED (new Image buffer)\n";
+        if (verbose) tout << "getThumbnail FAILED (new Image buffer)\n";
         return;
     }
     image_data->SetSize(bufSize);
@@ -2591,8 +2658,8 @@ void CameraDevice::getThumbnail(SDK::CrContentHandle content)
         text msg = get_message_desc(err);
         if (!msg.empty()) {
             // output is 2 line
-            tout << std::endl << msg.data() << ", handle=" << std::hex << content << std::dec << std::endl;
-            tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
+            if (verbose) tout << std::endl << msg.data() << ", handle=" << std::hex << content << std::dec << std::endl;
+            if (verbose) tout << m_info->GetModel() << " (" << id.data() << ")" << std::endl;
         }
     }
     else
@@ -2608,7 +2675,7 @@ void CameraDevice::getThumbnail(SDK::CrContentHandle content)
             auto path = fs::current_path();
             path.append(TEXT("Thumbnail.JPG"));
 #endif
-            tout << path << '\n';
+            if (verbose) tout << path << '\n';
 
             std::ofstream file(path, std::ios::out | std::ios::binary);
             if (!file.bad())

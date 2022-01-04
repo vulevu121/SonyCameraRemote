@@ -47,17 +47,24 @@ public:
 
     // Added functions
     void (*releaseExitSuccess)();
+    void (*releaseExitFailure)();
     bool wait_for_prop_value(SCRSDK::CrDevicePropertyCode prop, CrInt16u value);
-    void set_pcremote_priority();
-    void set_manual_exposure();
-    void set_focusmode_manual();
-    void set_focusmode_afs();
-    void set_release_on_completedownload(bool enable) {release_on_completedownload = enable;};
+    bool get_property_value(CrInt32u prop_code, CrInt64 &value);
+    bool set_property_value(CrInt32u prop_code, CrInt64 value);
     void set_verbose(bool enable) {verbose = enable;};
-    bool set_save_path(const text path, const text prefix, int startNo) const;
-    void half_press_down();
-    void half_press_up();
+    bool set_save_path(const text &path, const text &prefix, int startNo) const;
+    void set_release_after_download(bool enable) {release_after_download = enable;};
+    bool set_focusmode_manual();
+    bool set_focusmode_afs();
+    bool set_pcremote_priority();
+    bool set_manual_exposure();
+    bool set_exposure_bias_comp(CrInt16 value);
+    bool half_press_down();
+    bool half_press_up();
+    bool release_down();
+    bool release_up();
     void half_full_release();
+    bool is_error(CrInt32u error, const text &desc);
 
     // Try to connect to the device
     bool connect(SCRSDK::CrSdkControlMode openMode);
@@ -174,7 +181,7 @@ private:
     MtpFolderList   m_foldList;
     MtpContentsList m_contentList;
     bool m_spontaneous_disconnection;
-    bool release_on_completedownload = false;
+    bool release_after_download = false;
     bool verbose = true;
 };
 } // namespace cli

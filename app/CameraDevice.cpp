@@ -14,9 +14,13 @@ namespace fs = std::filesystem;
 #include <thread>
 #include "CRSDK/CrDeviceProperty.h"
 #include "Text.h"
+#include "DevicePropertyDefines.h"
 
 namespace SDK = SCRSDK;
 using namespace std::chrono_literals;
+
+#define SET_PROP_TIME 1000ms
+#define GET_PROP_TIME 400ms
 
 constexpr int const ImageSaveAutoStartNo = -1;
 
@@ -193,137 +197,6 @@ void CameraDevice::af_shutter() const
     if (verbose) tout << "Shutter Halfpress up\n";
     prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
     SDK::SetDeviceProperty(m_device_handle, &prop);
-}
-
-
-bool CameraDevice::wait_for_prop_value(SDK::CrDevicePropertyCode prop, CrInt16u value)
-{
-    CrInt32u codes[] = {
-        prop
-    };
-
-    for (int i=0; i<20 ; i++) {
-        SDK::CrDeviceProperty *pProps;
-        CrInt32 numofProps = 0;
-
-        SDK::GetSelectDeviceProperties(m_device_handle, 1, codes, &pProps, &numofProps);
-
-        if (pProps->GetCurrentValue() == value) {
-            tout << "Waited " << i*100 << "ms\n";
-            return true;
-        }
-        std::this_thread::sleep_for(100ms);
-    }
-    return false;
-}
-
-void CameraDevice::set_focusmode_manual() 
-{
-    SDK::CrDeviceProperty prop;
-    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
-    prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_MF);
-    SDK::SetDeviceProperty(m_device_handle, &prop);
-    
-    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode, SDK::CrFocusMode::CrFocus_MF)) {
-    //     tout << "Manual focus mode set successfully\n";
-    // }
-    // else {
-    //     tout << "Unable to set manual focus mode\n";
-    // }
-}
-
-void CameraDevice::set_focusmode_afs() 
-{
-    SDK::CrDeviceProperty prop;
-    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
-    prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_AF_S);
-    SDK::SetDeviceProperty(m_device_handle, &prop);
-
-    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode, SDK::CrFocusMode::CrFocus_AF_S)) {
-    //     tout << "AF-S focus mode was set successfully\n";
-    // }
-    // else {
-    //     tout << "Unable to set AF-S focus mode\n";
-    // }
-}
-
-void CameraDevice::half_press_down() 
-{
-    SDK::CrDeviceProperty prop;
-    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
-    prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
-    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
-    SDK::SetDeviceProperty(m_device_handle, &prop);
-
-    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_S1, SDK::CrLockIndicator::CrLockIndicator_Locked)) {
-    //     tout << "Half press down successful\n";
-    // }
-    // else {
-    //     tout << "Unable to half press down\n";
-    // }
-}
-
-void CameraDevice::half_press_up() 
-{
-    SDK::CrDeviceProperty prop;
-    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
-    prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
-    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
-    SDK::SetDeviceProperty(m_device_handle, &prop);
-
-    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_S1, SDK::CrLockIndicator::CrLockIndicator_Unlocked)) {
-    //     tout << "Half press up successful\n";
-    // }
-    // else {
-    //     tout << "Unable to half press up\n";
-    // }
-}
-
-void CameraDevice::set_pcremote_priority()
-{
-    SDK::CrDeviceProperty prop;
-    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_PriorityKeySettings);
-    prop.SetCurrentValue(SDK::CrPriorityKeySettings::CrPriorityKey_PCRemote);
-    SDK::SetDeviceProperty(m_device_handle, &prop);
-
-    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_PriorityKeySettings, SDK::CrPriorityKeySettings::CrPriorityKey_PCRemote)) {
-    //     tout << "PC Remote priority was set successfully\n";
-    // }
-    // else {
-    //     tout << "Unable to set PC remote priority\n";
-    // }
-}
-
-void CameraDevice::set_manual_exposure()
-{
-    SDK::CrDeviceProperty prop;
-    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureProgramMode);
-    prop.SetCurrentValue(SDK::CrExposureProgram::CrExposure_M_Manual);
-    SDK::SetDeviceProperty(m_device_handle, &prop);
-
-    // if (wait_for_prop_value(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureProgramMode, SDK::CrExposureProgram::CrExposure_M_Manual)) {
-    //     tout << "Manual exposure was set successfully\n";
-    // }
-    // else {
-    //     tout << "Unable to set manual exposure\n";
-    // }
-}
-
-void CameraDevice::half_full_release()
-{
-    set_pcremote_priority();
-    std::this_thread::sleep_for(2000ms);
-
-    half_press_down();
-    std::this_thread::sleep_for(1200ms);
-
-    SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
-    std::this_thread::sleep_for(100ms);
-
-    SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
-    std::this_thread::sleep_for(100ms);
-
-    half_press_up();
 }
 
 void CameraDevice::continuous_shooting() const
@@ -715,20 +588,6 @@ bool CameraDevice::set_save_info() const
         const_cast<text_char*>(prefix.data()), 
         ImageSaveAutoStartNo);
 #endif
-    if (CR_FAILED(save_status)) {
-        if (verbose) tout << "Failed to set save path.\n";
-        return false;
-    }
-    return true;
-}
-
-bool CameraDevice::set_save_path(const text path, const text prefix, int startNo) const
-{
-    if (verbose) tout << "Save dir: " << path.data() << '\n';
-
-    auto save_status = SDK::SetSaveInfo(m_device_handle
-        , const_cast<text_char*>(path.data()), const_cast<text_char*>(prefix.data()), startNo);
-
     if (CR_FAILED(save_status)) {
         if (verbose) tout << "Failed to set save path.\n";
         return false;
@@ -1938,7 +1797,7 @@ void CameraDevice::OnCompleteDownload(CrChar* filename)
     text file(filename);
     tout << "Download Complete (" << file.data() << ")\n";
 
-    if (release_on_completedownload) {
+    if (release_after_download) {
         releaseExitSuccess();
     }
 }
@@ -2688,6 +2547,195 @@ void CameraDevice::getThumbnail(SDK::CrContentHandle content)
     }
     delete[] image_buff; // Release
     delete image_data; // Release
+}
+
+bool CameraDevice::wait_for_prop_value(SDK::CrDevicePropertyCode prop, CrInt16u value)
+{
+    CrInt32u codes[] = {
+        prop
+    };
+
+    for (int i=0; i<20 ; i++) {
+        SDK::CrDeviceProperty *pProps;
+        CrInt32 numofProps = 0;
+
+        SDK::GetSelectDeviceProperties(m_device_handle, 1, codes, &pProps, &numofProps);
+
+        if (pProps->GetCurrentValue() == value) {
+            tout << "Waited " << i*100 << "ms\n";
+            return true;
+        }
+        std::this_thread::sleep_for(100ms);
+    }
+    return false;
+}
+
+bool CameraDevice::get_property_value(CrInt32u prop_code, CrInt64 &value)
+{
+    CrInt32u codes[] = {
+        prop_code
+    };
+    SDK::CrDeviceProperty *pProps;
+    CrInt32 numofProps = 0;
+
+    std::this_thread::sleep_for(GET_PROP_TIME);
+    auto error = SDK::GetSelectDeviceProperties(m_device_handle, 1, codes, &pProps, &numofProps);
+
+    if (is_error(error, "Get device property")) {
+        SDK::ReleaseDeviceProperties(m_device_handle, pProps);
+        return false;
+    }
+    SDK::ReleaseDeviceProperties(m_device_handle, pProps);
+
+    value = pProps->GetCurrentValue();
+    return true;
+}
+
+bool CameraDevice::set_property_value(CrInt32u prop_code, CrInt64 value)
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(prop_code);
+
+    switch (prop_code) {
+        case CrDeviceProperty_ExposureProgramMode:
+            prop.SetValueType(CrDataType_UInt32);
+            break;
+        case CrDeviceProperty_ExposureBiasCompensation:
+            prop.SetValueType(CrDataType_UInt16);
+            break;
+        case CrDeviceProperty_FNumber:
+            prop.SetValueType(CrDataType_UInt16);
+            break;
+        default:
+            prop.SetValueType(CrDataType_Int16);
+    }
+    
+    prop.SetCurrentValue(value);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    // wait for queue to empty
+    std::this_thread::sleep_for(SET_PROP_TIME);
+    return !is_error(error, map_property_names.at(prop_code));
+}
+
+bool CameraDevice::set_save_path(const text &path, const text &prefix, int startNo) const
+{
+    if (verbose) tout << "Save dir: " << path.data() << '\n';
+
+    auto save_status = SDK::SetSaveInfo(m_device_handle
+        , const_cast<text_char*>(path.data()), const_cast<text_char*>(prefix.data()), startNo);
+
+    if (CR_FAILED(save_status)) {
+        if (verbose) tout << "Failed to set save path.\n";
+        return false;
+    }
+    return true;
+}
+
+bool CameraDevice::set_focusmode_manual() 
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
+    prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_MF);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    return !is_error(error, "Manual focus mode");
+}
+
+bool CameraDevice::set_focusmode_afs() 
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_FocusMode);
+    prop.SetCurrentValue(SDK::CrFocusMode::CrFocus_AF_S);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    return !is_error(error, "AF-S focus mode");
+}
+
+bool CameraDevice::set_pcremote_priority()
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_PriorityKeySettings);
+    prop.SetCurrentValue(SDK::CrPriorityKeySettings::CrPriorityKey_PCRemote);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    return !is_error(error, "PC remote priority");
+}
+
+bool CameraDevice::set_manual_exposure()
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureProgramMode);
+    prop.SetCurrentValue(SDK::CrExposureProgram::CrExposure_M_Manual);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    return !is_error(error, "Manual exposure setting");
+}
+
+bool CameraDevice::set_exposure_bias_comp(CrInt16 value) 
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_ExposureBiasCompensation);
+    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
+    prop.SetCurrentValue(value);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    std::this_thread::sleep_for(SET_PROP_TIME);
+    return !is_error(error, "Exposure bias compensation");
+}
+
+bool CameraDevice::half_press_down() 
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
+    prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Locked);
+    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    return !is_error(error, "Half press down");
+}
+
+bool CameraDevice::half_press_up() 
+{
+    SDK::CrDeviceProperty prop;
+    prop.SetCode(SDK::CrDevicePropertyCode::CrDeviceProperty_S1);
+    prop.SetCurrentValue(SDK::CrLockIndicator::CrLockIndicator_Unlocked);
+    prop.SetValueType(SDK::CrDataType::CrDataType_UInt16);
+    auto error = SDK::SetDeviceProperty(m_device_handle, &prop);
+    return !is_error(error, "Half press up");
+}
+
+bool CameraDevice::release_down()
+{
+    auto error = SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Down);
+    return !is_error(error, "Shutter release down");
+}
+
+bool CameraDevice::release_up()
+{
+    auto error = SDK::SendCommand(m_device_handle, SDK::CrCommandId::CrCommandId_Release, SDK::CrCommandParam::CrCommandParam_Up);
+    return !is_error(error, "Shutter release up");
+}
+
+void CameraDevice::half_full_release()
+{
+    set_pcremote_priority();
+    std::this_thread::sleep_for(2000ms);
+
+    half_press_down();
+    std::this_thread::sleep_for(1200ms);
+
+    release_down();
+    std::this_thread::sleep_for(100ms);
+
+    release_up();
+    std::this_thread::sleep_for(100ms);
+
+    half_press_up();
+}
+
+bool CameraDevice::is_error(CrInt32u error, const text &desc)
+{
+    if (CR_FAILED(error)) {
+        text msg = get_message_desc(error);
+        if (verbose) tout << desc << " FAILED (" << msg << ")\n";
+        return true;
+    }
+    if (verbose) tout << desc << " SUCCESS\n";
+    return false;
 }
 
 } // namespace cli

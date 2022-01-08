@@ -48,7 +48,7 @@ public:
     // Added functions
     void (*releaseExitSuccess)();
     void (*releaseExitFailure)();
-    bool wait_for_prop_value(SCRSDK::CrDevicePropertyCode prop, CrInt16u value);
+    bool wait_for_prop_value(CrInt32u prop, CrInt16u value);
     bool get_property_value(CrInt32u prop_code, CrInt64 &value);
     bool set_property_value(CrInt32u prop_code, CrInt64 value);
     void set_verbose(bool enable) {verbose = enable;};

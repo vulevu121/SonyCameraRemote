@@ -2549,7 +2549,7 @@ void CameraDevice::getThumbnail(SDK::CrContentHandle content)
     delete image_data; // Release
 }
 
-bool CameraDevice::wait_for_prop_value(SDK::CrDevicePropertyCode prop, CrInt16u value)
+bool CameraDevice::wait_for_prop_value(CrInt32u prop, CrInt16u value)
 {
     CrInt32u codes[] = {
         prop
@@ -2716,7 +2716,7 @@ void CameraDevice::half_full_release()
     std::this_thread::sleep_for(2000ms);
 
     half_press_down();
-    std::this_thread::sleep_for(1200ms);
+    std::this_thread::sleep_for(1000ms);
 
     release_down();
     std::this_thread::sleep_for(100ms);

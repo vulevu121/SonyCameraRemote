@@ -2716,7 +2716,7 @@ void CameraDevice::half_full_release()
     std::this_thread::sleep_for(2000ms);
 
     half_press_down();
-    std::this_thread::sleep_for(1000ms);
+    std::this_thread::sleep_for(1200ms);
 
     release_down();
     std::this_thread::sleep_for(100ms);

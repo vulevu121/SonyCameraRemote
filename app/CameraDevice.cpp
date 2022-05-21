@@ -2719,12 +2719,13 @@ void CameraDevice::half_full_release()
     std::this_thread::sleep_for(1200ms);
 
     release_down();
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(2000ms);
 
     release_up();
-    std::this_thread::sleep_for(100ms);
+    std::this_thread::sleep_for(200ms);
 
     half_press_up();
+    std::this_thread::sleep_for(200ms);
 }
 
 bool CameraDevice::is_error(CrInt32u error, const text &desc)

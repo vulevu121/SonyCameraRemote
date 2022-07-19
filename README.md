@@ -2,7 +2,7 @@
 
 This is a command-line interface for controlling new Sony cameras such as Sony Alpha 7C. Based on Sony Camera Remote SDK v1.05.
 
-To make it work, you need to follow libusb and environment setup instructions in RemoteSampleApp_IM_v1.05.00.pdf
+To make it work, you need to follow environment setup instructions in RemoteSampleApp_IM_v1.05.00.pdf
 
 Command Line Interface:
 
